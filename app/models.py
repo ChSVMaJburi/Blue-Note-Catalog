@@ -42,7 +42,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(32), unique=True)
     email: Mapped[str] = mapped_column(String(254), unique=True)
-    password_hash: Mapped[str] = mapped_column(Text)
+    password_hash: Mapped[str] = mapped_column(Text, deferred=True)
     role: Mapped[str] = mapped_column(String(5), server_default=text("'user'"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

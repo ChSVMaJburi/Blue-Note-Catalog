@@ -1,3 +1,4 @@
+from contextlib import ExitStack
 from secrets import token_urlsafe
 
 import pytest
@@ -7,9 +8,49 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.models import Role, User
-from app.security import password_hasher
+from app.schemas.auth import LoginRequest
+from app.security import password_capacity, password_hasher
+from app.services.auth import authenticate
 
 pytestmark = pytest.mark.integration
+
+
+def test_auth_overload_is_retryable(client: TestClient) -> None:
+    credentials = {"username": "listener", "password": token_urlsafe()}
+    account = {**credentials, "email": "listener@example.com"}
+    with ExitStack() as occupied:
+        for _ in range(4):
+            occupied.enter_context(password_capacity())
+        for route, data in [("login", credentials), ("register", account)]:
+            busy = client.post(f"/api/v1/auth/{route}", json=data)
+            assert busy.status_code == 503
+            assert busy.headers["Retry-After"] == "1"
+            assert busy.json()["error"]["code"] == "auth_busy"
+    assert client.post("/api/v1/auth/register", json=account).status_code == 201
+
+
+def test_login_releases_connection_before_argon2(client, database, monkeypatch) -> None:
+    password = token_urlsafe()
+    credentials = {"username": "listener", "password": password}
+    assert (
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                **credentials,
+                "email": "listener@example.com",
+            },
+        ).status_code
+        == 201
+    )
+    verify = password_hasher.verify
+    with Session(database) as session:
+
+        def checked_verify(plain, hashed):
+            assert not session.in_transaction()
+            return verify(plain, hashed)
+
+        monkeypatch.setattr(password_hasher, "verify", checked_verify)
+        assert authenticate(session, LoginRequest(**credentials)) > 0
 
 
 def test_register_login_and_read_profile(client: TestClient, database: Engine) -> None:
@@ -36,7 +77,9 @@ def test_register_login_and_read_profile(client: TestClient, database: Engine) -
     assert login.json()["token_type"] == "bearer"
 
     auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
-    assert client.get("/api/v1/auth/me", headers=auth).json() == profile
+    me = client.get("/api/v1/auth/me", headers=auth)
+    assert me.json() == profile
+    assert me.headers["Cache-Control"] == "no-store"
 
 
 @pytest.mark.parametrize("field", ["username", "email"])

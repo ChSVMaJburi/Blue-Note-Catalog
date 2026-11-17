@@ -29,6 +29,3 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 def require_admin(user: CurrentUser) -> User:
     return require_admin_role(user)
-
-
-AdminUser = Annotated[User, Depends(require_admin)]

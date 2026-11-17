@@ -14,6 +14,7 @@ from app.config import Settings
 from app.db import make_engine
 from app.main import create_app
 from app.models import Role
+from app.provision import API_ROLE, provision_role
 from app.schemas.auth import Registration
 from app.services.auth import create_account
 
@@ -44,6 +45,7 @@ def migration_config(test_settings: Settings) -> Config:
 @pytest.fixture(scope="session")
 def engine(test_settings: Settings, migration_config: Config) -> Iterator[Engine]:
     command.upgrade(migration_config, "head")
+    provision_role(test_settings, test_settings.postgres_password.get_secret_value())
     database = make_engine(test_settings)
     try:
         yield database
@@ -65,7 +67,9 @@ def database(engine: Engine) -> Engine:
 
 @pytest.fixture
 def client(database: Engine, test_settings: Settings) -> Iterator[TestClient]:
-    with TestClient(create_app(test_settings)) as http:
+    with TestClient(
+        create_app(test_settings.model_copy(update={"postgres_user": API_ROLE}))
+    ) as http:
         yield http
 
 

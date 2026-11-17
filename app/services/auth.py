@@ -6,16 +6,19 @@ from app.errors import AppError, unauthorized
 from app.models import Role, User
 from app.repositories import users
 from app.schemas.auth import LoginRequest, Registration
-from app.security import dummy_password_hash, password_hasher
+from app.security import dummy_password_hash, password_capacity, password_hasher
 
 
 def create_account(session: Session, data: Registration, *, role: Role = Role.USER) -> User:
+    with password_capacity():
+        hashed = password_hasher.hash(data.password.get_secret_value())
     user = User(
         username=data.username,
         email=data.email,
-        password_hash=password_hasher.hash(data.password.get_secret_value()),
-        role=role,
+        password_hash=hashed,
     )
+    if role == Role.ADMIN:
+        user.role = role
     users.add(session, user)
     try:
         session.commit()
@@ -29,13 +32,15 @@ def create_account(session: Session, data: Registration, *, role: Role = Role.US
     return user
 
 
-def authenticate(session: Session, data: LoginRequest) -> User:
-    user = users.by_username(session, data.username)
-    stored_hash = user.password_hash if user else dummy_password_hash
-    verified = password_hasher.verify(data.password.get_secret_value(), stored_hash)
-    if not verified or user is None:
+def authenticate(session: Session, data: LoginRequest) -> int:
+    with session.begin():
+        credentials = users.credentials_by_username(session, data.username)
+    stored_hash = credentials.password_hash if credentials else dummy_password_hash
+    with password_capacity():
+        verified = password_hasher.verify(data.password.get_secret_value(), stored_hash)
+    if not verified or credentials is None:
         raise unauthorized("Invalid username or password")
-    return user
+    return credentials.id
 
 
 def require_admin_role(user: User) -> User:

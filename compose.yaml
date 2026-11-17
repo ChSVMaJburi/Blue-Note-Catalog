@@ -19,23 +19,28 @@ services:
       retries: 20
 
   migrate:
-    image: music-catalog-app:local
-    build:
-      context: .
-      target: runtime
-    environment: *database-env
-    command: ["alembic", "upgrade", "head"]
-    depends_on:
-      db:
-        condition: service_healthy
-
-  api:
-    image: music-catalog-app:local
+    image: ${COMPOSE_PROJECT_NAME}-app:local
     build:
       context: .
       target: runtime
     environment:
       <<: *database-env
+      API_DB_PASSWORD: ${API_DB_PASSWORD:?Set API_DB_PASSWORD in .env}
+    command: ["python", "-m", "app.provision"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    image: ${COMPOSE_PROJECT_NAME}-app:local
+    pull_policy: never
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      <<: *database-env
+      POSTGRES_USER: music_catalog_api
+      POSTGRES_PASSWORD: ${API_DB_PASSWORD:?Set API_DB_PASSWORD in .env}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-30}
     depends_on:

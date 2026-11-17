@@ -4,19 +4,43 @@ from sqlalchemy import Engine, inspect, select
 from sqlalchemy.orm import Session
 
 from alembic import command
+from app.config import Settings
 from app.models import Album, Artist, Base, Playlist, PlaylistTrack, Subscription, Track, User
+from app.provision import API_ROLE, provision_role
 
 pytestmark = pytest.mark.integration
 
 
-def test_migration_downgrade_and_upgrade(database: Engine, migration_config: Config) -> None:
+def test_migration_downgrade_and_upgrade(
+    database: Engine, migration_config: Config, test_settings: Settings
+) -> None:
     try:
         command.downgrade(migration_config, "base")
         assert set(inspect(database).get_table_names()).isdisjoint(Base.metadata.tables)
     finally:
         command.upgrade(migration_config, "head")
+        provision_role(test_settings, test_settings.postgres_password.get_secret_value())
     assert set(Base.metadata.tables) <= set(inspect(database).get_table_names())
     command.check(migration_config)
+
+
+def test_runtime_role_has_only_application_privileges(database: Engine) -> None:
+    from sqlalchemy import text
+
+    with database.connect() as connection:
+        permissions = connection.execute(
+            text("""
+                SELECT rolsuper, rolcreaterole, rolcreatedb,
+                       has_schema_privilege(rolname, 'public', 'CREATE'),
+                       has_column_privilege(rolname, 'users', 'role', 'INSERT'),
+                       has_column_privilege(rolname, 'users', 'role', 'UPDATE'),
+                       has_table_privilege(rolname, 'artists', 'TRUNCATE'),
+                       has_table_privilege(rolname, 'alembic_version', 'UPDATE')
+                FROM pg_roles WHERE rolname = :role
+            """),
+            {"role": API_ROLE},
+        ).one()
+        assert not any(permissions)
 
 
 def test_association_cleanup_enforced_by_postgres(database: Engine) -> None:
