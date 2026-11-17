@@ -15,6 +15,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+MAX_ID = 2_147_483_647
+
 
 class Base(DeclarativeBase):
     metadata = MetaData(

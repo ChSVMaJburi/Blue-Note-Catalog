@@ -6,11 +6,11 @@ from pwdlib import PasswordHash
 
 from app.config import Settings
 from app.errors import unauthorized
+from app.models import MAX_ID
 
 ALGORITHM = "HS256"
 ISSUER = "blue-note-catalog"
 AUDIENCE = "blue-note-api"
-MAX_ID = 2_147_483_647
 password_hasher = PasswordHash.recommended()
 dummy_password_hash = password_hasher.hash("not-an-account-password")
 
