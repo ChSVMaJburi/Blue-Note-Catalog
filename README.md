@@ -1,74 +1,90 @@
 # Blue Note Catalog
 
-Jazz catalog REST API with FastAPI, SQLAlchemy 2, PostgreSQL 17 and Alembic. Catalog reads are public; only administrators can change catalog data. This branch implements the first milestone: accounts, catalog CRUD and the schema for playlists and subscriptions. Playlist/subscription endpoints, email delivery and CSV import are not yet implemented.
+REST API каталога джаза на FastAPI, SQLAlchemy 2 и PostgreSQL 17. Любой посетитель может искать исполнителей, альбомы и треки. Администратор управляет каталогом. Первый этап включает эти операции, регистрацию, вход и профиль. Для подписок и личных плейлистов подготовлены таблицы. Их API, уведомления и CSV-импорт входят в следующий этап.
 
-## Quick start
+## Быстрый запуск
 
-Requires Docker Engine and Docker Compose v2 or later. On a fresh checkout, generate a local `.env` once (requires OpenSSL):
+Понадобятся Docker с Compose v2.20+ и OpenSSL. В корне свежего клона выполните команды для Bash или Zsh. Первая команда создаёт закрытый для других пользователей файл с тремя независимыми секретами. Вторая запускает весь стек.
 
 ```bash
 (umask 077; set -C
-  sed -e "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=$(openssl rand -hex 24)/" \
+  sed -e "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=$(openssl rand -hex 32)/" \
+      -e "s/^API_DB_PASSWORD=$/API_DB_PASSWORD=$(openssl rand -hex 32)/" \
       -e "s/^JWT_SECRET=$/JWT_SECRET=$(openssl rand -hex 32)/" .env.example > .env
 )
 docker compose up --build --wait
 curl --fail http://localhost:8000/health/ready
 ```
 
-If `.env` already exists, keep it and run only the last two commands. Alternatively copy `.env.example` and fill both empty secrets with independently generated random values. Compose waits for PostgreSQL, runs `alembic upgrade head` once, then starts the API. Swagger UI: <http://localhost:8000/docs>. The API binds to localhost; the database is not published to the host. `docker compose down` stops the stack without deleting its data.
+Ожидаемый ответ — `{"status":"ok"}`. Для просмотра и выполнения запросов откройте [Swagger UI](http://localhost:8000/docs). API слушает loopback, PostgreSQL доступен внутри сети Compose. Команда `docker compose down` сохраняет данные в именованном томе.
 
-| Setting | Purpose |
+Если `.env` уже настроен, достаточно команды запуска. При обновлении с первой версии ветки добавьте в существующий файл только отсутствующую строку `API_DB_PASSWORD` со значением из `openssl rand -hex 32`. Сохраните прежние `POSTGRES_PASSWORD` и `JWT_SECRET`. Мигратор применит права к существующей БД.
+
+| Переменная | Назначение |
 | --- | --- |
-| `POSTGRES_DB`, `POSTGRES_USER` | Database and login, default `music_catalog` / `catalog` |
-| `POSTGRES_PASSWORD` | Required; no default |
-| `JWT_SECRET` | Required; use an independently generated value with at least 32 random bytes |
-| `ACCESS_TOKEN_MINUTES` | Optional; 1–60, default 30 |
-| `APP_PORT` | Local HTTP port, default 8000 |
+| `POSTGRES_DB`, `POSTGRES_USER` | База и её владелец для инициализации и миграций. По умолчанию `music_catalog` и `catalog` |
+| `POSTGRES_PASSWORD` | Пароль владельца. PostgreSQL использует его при инициализации пустого тома |
+| `API_DB_PASSWORD` | Отдельный пароль роли `music_catalog_api`. Мигратор устанавливает его при запуске |
+| `JWT_SECRET` | Ключ HS256. Команда запуска генерирует 32 случайных байта |
+| `ACCESS_TOKEN_MINUTES` | Срок действия access-токена от 1 до 60 минут, по умолчанию 30 |
+| `APP_PORT` | Порт HTTP на хосте, по умолчанию 8000 |
 
-`POSTGRES_HOST` and `POSTGRES_PORT` are also supported by the app. Compose sets the host to `db`; the port defaults to 5432. PostgreSQL initialization variables only apply to an empty volume. Editing a password in `.env` does not rotate an existing database credential.
+## Как попробовать API
 
-## API examples
-
-Base path: `/api/v1`. Run the administrative command from a terminal:
+Для создания первого администратора выполните команду в терминале. Она запросит имя, email и пароль с подтверждением. Указанная учётная запись должна быть новой.
 
 ```bash
-docker compose exec api python -m app.cli create-admin
+docker compose run --rm migrate python -m app.cli create-admin
 ```
 
-It creates a new Admin account, prompts twice for a hidden password, and never promotes an existing User. Public registration always creates a User. Try these requests in Swagger UI (passwords are entered locally, not passed as shell arguments):
+Все пути в таблице начинаются с `/api/v1`. Удобно пройти сценарий в Swagger UI. После входа скопируйте значение `access_token` в **Authorize**. В примерах вместо единицы подставьте ID из предыдущего ответа.
 
-| Request | Example JSON or query | Expected result |
+| Запрос | Тело или параметры | Результат |
 | --- | --- | --- |
-| `POST /auth/register` | `{"username":"listener","email":"listener@example.com","password":"<your unique password>"}` | `201`, account profile |
-| `POST /auth/login` | `{"username":"<your admin username>","password":"<your admin password>"}` | `200`, bearer token |
-| `GET /auth/me` | Paste the access token into Swagger's Authorize dialog | `200`, current profile |
-| `POST /artists` | `{"name":"Miles Davis","bio":"Jazz trumpeter"}` | `201`, artist |
-| `POST /albums` | `{"artist_id":1,"title":"Kind of Blue","release_date":"1959-08-17"}` | `201`, album |
-| `POST /tracks` | `{"album_id":1,"title":"So What","track_number":1,"duration_seconds":562}` | `201`, track |
-| `GET /tracks?q=so&artist_id=1&album_id=1&limit=10&offset=0` | No token required | `200`, page of tracks |
-| `PATCH /artists/1` | `{"bio":null}` | `200`, bio cleared |
-| `DELETE /tracks/1` | No body | `204`, empty response |
+| `POST /auth/register` | `{"username":"listener","email":"listener@example.com","password":"<ваш пароль длиной от 12 символов>"}` | `201`, профиль с ролью User |
+| `POST /auth/login` | `{"username":"<имя администратора>","password":"<ваш пароль>"}` | `200`, Bearer-токен и срок в секундах |
+| `GET /auth/me` | Bearer-токен | `200`, текущий профиль |
+| `POST /artists` | `{"name":"Miles Davis","bio":"Трубач"}` | `201`, исполнитель |
+| `POST /albums` | `{"artist_id":1,"title":"Kind of Blue","release_date":"1959-08-17"}` | `201`, альбом |
+| `POST /tracks` | `{"album_id":1,"title":"So What","track_number":1,"duration_seconds":562}` | `201`, трек |
+| `GET /tracks` | `?q=so&artist_id=1&album_id=1&limit=10&offset=0` | `200`, страница совпадений |
+| `PATCH /artists/1` | `{"bio":null}` | `200`, описание очищено |
+| `DELETE /tracks/1` | Без тела | `204`, пустой ответ |
 
-Use the IDs returned by the create calls in subsequent requests. All three collections also support `GET /{id}`, `PATCH /{id}` and `DELETE /{id}`. Lists are ordered by ID and return `items`, `limit`, `offset`, `has_more`. Search `q` is a literal case-insensitive substring of the name/title; filters combine with AND.
+У каждой коллекции есть создание, список, чтение по ID, частичное обновление и удаление. Списки сортируются по ID. Ответ содержит `items`, `limit`, `offset` и `has_more`. Параметр `q` ищет подстроку имени или названия без учёта регистра. Фильтры действуют одновременно. Например, после заполнения каталога выполните:
+
+```bash
+curl 'http://localhost:8000/api/v1/tracks?q=so&limit=5'
+```
+
+Попытка удалить альбом с треками даст `409 Conflict`:
 
 ```json
 {"error":{"code":"resource_in_use","message":"Remove dependent catalog entries first","details":[]}}
 ```
 
-`401` means credentials are missing or invalid (`WWW-Authenticate: Bearer`); `403` means the authenticated user lacks permission. `404` covers missing resources/parents, `409` conflicts or dependent catalog records, and `422` invalid bodies or parameters. Validation details include location, code and message, not the submitted input.
+Клиент может обрабатывать стабильный `error.code`. Код `401` означает недействительные или отсутствующие учётные данные, `403` — недостаток прав, `404` — отсутствующий ресурс. При `422` массив `details` указывает ошибочные поля. Если заняты все слоты обработки паролей, сервер отвечает `503 auth_busy` с `Retry-After`.
 
-## Migrations and tests
+## Архитектура и допущения
+
+- Роутер определяет HTTP-контракт, Pydantic проверяет данные, сервис принимает решение и фиксирует транзакцию, репозиторий строит SQL. Синхронные обработчики работают в пуле потоков. У каждого запроса своя Session, у каждого процесса приложения общий Engine.
+- Один альбом принадлежит одному исполнителю, трек — одному альбому. Автор трека определяется по альбому. Сингл представлен однотрековым альбомом. Допускаются одноимённые исполнители. Название альбома уникально у исполнителя, номер трека уникален в альбоме. Коллаборации и нумерация по дискам потребовали бы расширения схемы.
+- Внешние ключи защищают каталог от случайного удаления записей с потомками. Каскадная очистка удаляет зависимые личные связи. Ограничения PostgreSQL действуют и при конкурентных записях. Сервис переводит известные конфликты в ответы API после rollback.
+- Пароли хранятся как Argon2id. Логин завершает чтение из БД до дорогой проверки хэша. Четыре слота на процесс ограничивают число одновременных операций Argon2. Защищённый маршрут проверяет подпись и срок JWT, затем читает роль пользователя из БД. Снятие роли Admin действует со следующего запроса. Повторный вход выдаёт новый токен.
+- Compose ждёт готовности PostgreSQL, одноразовый сервис `migrate` выполняет Alembic и настраивает роль API в выделенной БД, затем стартует API. Роли приложения User и Admin отличаются от ролей PostgreSQL. HTTP-процесс получает только доступ к нужным данным. Создание администратора и обслуживание схемы выполняет оператор через `migrate`. Оба используют один образ, собранный в несколько стадий, с UID 10001.
+
+## Миграции и проверки
 
 ```bash
-docker compose exec api alembic current
-docker compose exec api alembic check
+docker compose run --rm migrate alembic current
+docker compose run --rm migrate alembic check
 docker compose -f compose.test.yaml up --build --abort-on-container-exit --exit-code-from tests
 docker compose -f compose.test.yaml down
 ```
 
-The test stack runs unit and HTTP integration tests on an isolated PostgreSQL instance with ephemeral storage and no published ports. It applies Alembic, exercises downgrade and re-upgrade, and checks ORM/migration consistency. Do not run destructive downgrades against a database with data you want to keep.
+Тестовый стек поднимает отдельный PostgreSQL в памяти внутри закрытой сети. DB-доступ тестового API соответствует роли рабочего API. Проверяются HTTP-сценарии, конфликты записей, права, миграция на пустую БД, её откат и повторное применение. Откат начальной миграции удаляет таблицы и используется только на одноразовых данных.
 
-For unit tests and lint without Docker, use Python 3.13:
+Для локальной проверки кода и unit-тестов нужен Python 3.13:
 
 ```bash
 python3.13 -m venv .venv
@@ -79,11 +95,6 @@ ruff check .
 ruff format --check .
 ```
 
-## Design choices
+## Что бы я улучшил при наличии времени
 
-- Routers handle HTTP, schemas define the API contract, services decide outcomes and commit writes, and repositories build SQLAlchemy queries. A synchronous session per request keeps the transaction boundary explicit; sync handlers run outside the event loop.
-- An album has one artist, a track has one album, and track authorship is derived through the album. Standalone tracks can use a single-track album; collaborations and multi-disc numbering are out of scope. Artist names need not be unique; album titles are unique per artist and track numbers per album.
-- Core catalog deletes use `RESTRICT`; association cleanup uses `CASCADE`. PostgreSQL enforces invariants under concurrent writes; known constraint violations map to domain errors without a race-prone preflight query.
-- Passwords are Argon2id hashes. JWTs are signed with HS256 and expire; role is read from PostgreSQL on protected requests rather than trusted from the token. No refresh tokens or per-token revocation in this milestone.
-- Offset pagination is simple for a small catalog. Fetching one extra row avoids a separate count query; deep offsets and concurrent insert/delete can make offsets less useful. For larger datasets, evaluate keyset pagination and a trigram index based on measured query plans.
-- The runtime image is multi-stage and non-root. The Compose credentials are for local development. For public deployment, add TLS, proper secret injection, separate application/migration database privileges, and protection against abusive login traffic.
+При росте каталога стоит измерить планы запросов с глубоким `OFFSET` и поиском подстроки. Переход на пагинацию по последнему ID и триграммный индекс имеет смысл после таких измерений. Для публичного развёртывания нужны TLS и ограничение частоты входа на общем шлюзе. Допустимое число одновременных проверок пароля следует подбирать по памяти контейнера и числу процессов. Если потребуется гарантированная доставка уведомлений после перезапуска приложения, стоит сохранять события в транзакции вместе с треками и обрабатывать их отдельным worker.
