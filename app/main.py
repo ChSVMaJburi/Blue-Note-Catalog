@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.auth import router as auth_router
 from app.api.catalog import router as catalog_router
+from app.api.imports import router as imports_router
 from app.api.playlists import router as playlists_router
 from app.api.subscriptions import router as subscriptions_router
 from app.config import Settings
@@ -32,6 +33,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     install_error_handlers(application)
     application.include_router(auth_router, prefix="/api/v1")
+    application.include_router(imports_router, prefix="/api/v1")
     application.include_router(catalog_router, prefix="/api/v1")
     application.include_router(playlists_router, prefix="/api/v1")
     application.include_router(subscriptions_router, prefix="/api/v1")
