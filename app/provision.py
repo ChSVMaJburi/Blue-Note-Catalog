@@ -47,6 +47,13 @@ def provision_role(settings: DatabaseSettings, api_password: str) -> None:
             )
         )
         connection.execute(
+            sql.SQL("GRANT SELECT, INSERT, DELETE, UPDATE (name) ON playlists TO {}").format(role)
+        )
+        connection.execute(
+            sql.SQL("GRANT SELECT, INSERT, DELETE ON playlist_tracks TO {}").format(role)
+        )
+        connection.execute(sql.SQL("GRANT USAGE ON SEQUENCE playlists_id_seq TO {}").format(role))
+        connection.execute(
             sql.SQL("GRANT SELECT, INSERT (username, email, password_hash) ON users TO {}").format(
                 role
             )

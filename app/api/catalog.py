@@ -1,11 +1,11 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 
-from app.api.dependencies import require_admin
+from app.api.dependencies import ResourceId, require_admin
 from app.db import DbSession
 from app.errors import error_docs
-from app.models import MAX_ID, Album, Artist, Track
+from app.models import Album, Artist, Track
 from app.schemas.catalog import (
     AlbumCreate,
     AlbumFilters,
@@ -25,7 +25,6 @@ from app.services import catalog
 from app.services.catalog import CatalogPage
 
 router = APIRouter(tags=["catalog"], responses=error_docs(422, 500))
-ResourceId = Annotated[int, Path(gt=0, le=MAX_ID)]
 admin_only = [Depends(require_admin)]
 
 

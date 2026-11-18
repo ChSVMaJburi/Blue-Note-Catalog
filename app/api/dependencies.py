@@ -1,15 +1,16 @@
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Path
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.db import AppSettings, DbSession
 from app.errors import unauthorized
-from app.models import User
+from app.models import MAX_ID, User
 from app.repositories import users
 from app.security import read_access_token
 from app.services.auth import require_admin_role
 
+ResourceId = Annotated[int, Path(gt=0, le=MAX_ID)]
 BearerCredentials = Annotated[
     HTTPAuthorizationCredentials | None, Depends(HTTPBearer(auto_error=False, bearerFormat="JWT"))
 ]

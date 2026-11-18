@@ -9,7 +9,7 @@ from app.db import constraint_name
 from app.errors import AppError
 from app.models import Album, Artist, Base, Track
 from app.repositories import catalog
-from app.schemas.catalog import AlbumFilters, ArtistFilters, TrackFilters
+from app.schemas.catalog import AlbumFilters, ArtistFilters, Pagination, TrackFilters
 
 PARENT_CONSTRAINTS = {"fk_albums_artist_id_artists": "artist", "fk_tracks_album_id_albums": "album"}
 UNIQUENESS_ERRORS = {
@@ -90,7 +90,7 @@ class CatalogPage[Entity]:
     has_more: bool
 
 
-def page[Entity](items: Sequence[Entity], filters: ArtistFilters) -> CatalogPage[Entity]:
+def page[Entity](items: Sequence[Entity], filters: Pagination) -> CatalogPage[Entity]:
     return CatalogPage(
         items=items[: filters.limit],
         limit=filters.limit,

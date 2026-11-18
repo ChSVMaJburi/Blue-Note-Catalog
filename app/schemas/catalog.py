@@ -116,9 +116,12 @@ class TrackRead(BaseModel):
     duration_seconds: int
 
 
-class ArtistFilters(CatalogInput):
+class Pagination(CatalogInput):
     limit: Annotated[int, Field(ge=1, le=100)] = 20
     offset: Annotated[int, Field(ge=0, le=MAX_ID)] = 0
+
+
+class ArtistFilters(Pagination):
     q: Search | None = None
 
 
