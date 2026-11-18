@@ -8,6 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.api.auth import router as auth_router
 from app.api.catalog import router as catalog_router
 from app.api.playlists import router as playlists_router
+from app.api.subscriptions import router as subscriptions_router
 from app.config import Settings
 from app.db import make_engine
 from app.errors import AppError, error_docs, install_error_handlers
@@ -33,6 +34,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(auth_router, prefix="/api/v1")
     application.include_router(catalog_router, prefix="/api/v1")
     application.include_router(playlists_router, prefix="/api/v1")
+    application.include_router(subscriptions_router, prefix="/api/v1")
 
     @application.get("/health/live", tags=["health"])
     def liveness() -> dict[str, str]:

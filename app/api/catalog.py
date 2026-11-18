@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response
 
 from app.api.dependencies import ResourceId, require_admin
 from app.db import DbSession
@@ -23,6 +23,7 @@ from app.schemas.catalog import (
 )
 from app.services import catalog
 from app.services.catalog import CatalogPage
+from app.services.notifications import notify_subscribers
 
 router = APIRouter(tags=["catalog"], responses=error_docs(422, 500))
 admin_only = [Depends(require_admin)]
@@ -130,8 +131,12 @@ def list_tracks(
     dependencies=admin_only,
     responses=error_docs(401, 403, 404, 409),
 )
-def create_track(data: TrackCreate, session: DbSession) -> Track:
-    return catalog.tracks.create(session, data.model_dump())
+def create_track(
+    data: TrackCreate, session: DbSession, background: BackgroundTasks, request: Request
+) -> Track:
+    track = catalog.tracks.create(session, data.model_dump())
+    background.add_task(notify_subscribers, request.app.state.engine, [track.id])
+    return track
 
 
 @router.get("/tracks/{track_id}", response_model=TrackRead, responses=error_docs(404))
