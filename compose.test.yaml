@@ -1,0 +1,29 @@
+name: music-catalog-tests
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: music_catalog_test
+      POSTGRES_HOST_AUTH_METHOD: trust
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "music_catalog_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  tests:
+    build:
+      context: .
+      target: test
+    environment:
+      TEST_POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+
+networks:
+  default:
+    internal: true

@@ -1,0 +1,29 @@
+# Private assessment materials and personal study notes
+README_PRIVATE.md
+zypl_Backend_Engineer_FastAPI_Assessment.docx
+RESUME AMINOV.pdf
+
+# Local secrets (only the placeholder template is versioned)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python environments and generated files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.egg-info/
+build/
+dist/
+.DS_Store
+.idea/
