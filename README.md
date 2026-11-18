@@ -7,8 +7,8 @@ REST API каталога джаза на FastAPI, SQLAlchemy 2 и PostgreSQL 17
 Для запуска нужны доступ к приватному репозиторию, Docker Compose v2.20+, POSIX shell и OpenSSL.
 
 ```bash
-git clone --branch codex/catalog-delivery https://github.com/ChSVMaJburi/For_ZYPL.git
-cd For_ZYPL
+git clone --branch codex/catalog-delivery https://github.com/ChSVMaJburi/Blue-Note-Catalog.git
+cd Blue-Note-Catalog
 sh scripts/start.sh
 curl --fail http://localhost:8000/health/ready
 ```
