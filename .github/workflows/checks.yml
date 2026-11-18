@@ -1,0 +1,24 @@
+name: Catalog checks
+on: [push, pull_request]
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build test image
+        run: docker compose -f compose.test.yaml build tests
+      - name: Lint and format
+        run: |
+          docker compose -f compose.test.yaml run --rm --no-deps tests ruff check --no-cache .
+          docker compose -f compose.test.yaml run --rm --no-deps tests ruff format --check --no-cache .
+      - name: Unit and PostgreSQL integration tests
+        run: docker compose -f compose.test.yaml up --no-build --abort-on-container-exit --exit-code-from tests
+      - name: Clean up
+        if: always()
+        run: docker compose -f compose.test.yaml down

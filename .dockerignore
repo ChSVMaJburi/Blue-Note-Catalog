@@ -22,3 +22,4 @@ coverage.xml
 build
 dist
 .DS_Store
+.idea
