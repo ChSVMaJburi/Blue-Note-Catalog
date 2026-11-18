@@ -60,7 +60,17 @@ def test_import_access_and_file_errors(client, admin_headers, make_user):
     assert client.get("/api/v1/tracks").json()["items"] == []
 
 
-def test_unclosed_quote_preserves_complete_records(client, admin_headers, make_user, monkeypatch):
+@pytest.mark.parametrize(
+    ("tail", "expected_titles"),
+    [
+        ('1,"unfinished\n1,Later,2,60', ["Two\nlines"]),
+        ('1,"invalid"x,3,90\n{album_id},Later,2,60', ["Two\nlines", "Later"]),
+    ],
+    ids=["unclosed_quote_at_eof", "recoverable_error_between_tracks"],
+)
+def test_csv_imports_all_recoverable_records(
+    client, admin_headers, make_user, monkeypatch, tail, expected_titles
+):
     artist = client.post("/api/v1/artists", headers=admin_headers, json={"name": "Ella"}).json()
     album = client.post(
         "/api/v1/albums", headers=admin_headers, json={"title": "Blue", "artist_id": artist["id"]}
@@ -71,21 +81,25 @@ def test_unclosed_quote_preserves_complete_records(client, admin_headers, make_u
     )
     sent = []
     monkeypatch.setattr(notifications, "send_mock_email", sent.append)
-    data = HEADER + f'{album["id"]},"Two\nlines",1,30\n1,"unfinished\n1,Later,2,60'.encode()
+    data = (
+        HEADER
+        + f'{album["id"]},"Two\nlines",1,30\n'.encode()
+        + tail.format(album_id=album["id"]).encode()
+    )
     result = client.post(PATH, headers=admin_headers, files={"file": ("tracks.csv", data)})
     assert result.status_code == 200
     assert result.json() == {
-        "imported": 1,
+        "imported": len(expected_titles),
         "rejected": 1,
         "errors": [
             {
                 "line": 4,
                 "code": "invalid_csv",
-                "message": "Malformed CSV record; parsing stopped here",
+                "message": "Malformed CSV record",
             }
         ],
     }
-    assert [item["title"] for item in client.get("/api/v1/tracks").json()["items"]] == [
-        "Two\nlines"
-    ]
-    assert len(sent) == 1
+    assert [
+        item["title"] for item in client.get("/api/v1/tracks").json()["items"]
+    ] == expected_titles
+    assert len(sent) == len(expected_titles)

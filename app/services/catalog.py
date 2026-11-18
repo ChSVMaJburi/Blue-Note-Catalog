@@ -19,13 +19,25 @@ UNIQUENESS_ERRORS = {
     ),
     "uq_tracks_album_number": (
         "track_number_conflict",
-        "This number is already used on this album",
+        "Track number already used on album",
     ),
 }
 
 
 def not_found(resource: str) -> AppError:
     return AppError(404, f"{resource}_not_found", f"{resource.capitalize()} not found")
+
+
+def catalog_constraint_error(error: IntegrityError, *, deleting: bool = False) -> AppError | None:
+    constraint = constraint_name(error)
+    if constraint in UNIQUENESS_ERRORS:
+        code, message = UNIQUENESS_ERRORS[constraint]
+        return AppError(409, code, message)
+    if constraint in PARENT_CONSTRAINTS:
+        if deleting:
+            return AppError(409, "resource_in_use", "Remove dependent catalog entries first")
+        return not_found(PARENT_CONSTRAINTS[constraint])
+    return None
 
 
 class CatalogService[Entity: Base]:
@@ -61,16 +73,8 @@ class CatalogService[Entity: Base]:
             session.commit()
         except IntegrityError as error:
             session.rollback()
-            constraint = constraint_name(error)
-            if constraint in UNIQUENESS_ERRORS:
-                code, message = UNIQUENESS_ERRORS[constraint]
-                raise AppError(409, code, message) from None
-            if constraint in PARENT_CONSTRAINTS:
-                if deleting:
-                    raise AppError(
-                        409, "resource_in_use", "Remove dependent catalog entries first"
-                    ) from None
-                raise not_found(PARENT_CONSTRAINTS[constraint]) from None
+            if mapped := catalog_constraint_error(error, deleting=deleting):
+                raise mapped from None
             raise
         except StaleDataError:
             session.rollback()

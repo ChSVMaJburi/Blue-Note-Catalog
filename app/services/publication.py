@@ -3,11 +3,11 @@ from collections.abc import Callable
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db import constraint_name
 from app.errors import AppError
 from app.models import Track
 from app.schemas.catalog import TrackCreate
 from app.schemas.imports import ImportReport, RowError
+from app.services.catalog import catalog_constraint_error
 from app.services.imports import parse_csv
 
 
@@ -22,15 +22,9 @@ class TrackPublisher:
         try:
             self.session.flush()
         except IntegrityError as error:
-            match constraint_name(error):
-                case "uq_tracks_album_number":
-                    raise AppError(
-                        409, "track_number_conflict", "Track number already used on album"
-                    ) from None
-                case "fk_tracks_album_id_albums":
-                    raise AppError(404, "album_not_found", "Album not found") from None
-                case _:
-                    raise
+            if mapped := catalog_constraint_error(error):
+                raise mapped from None
+            raise
         return track
 
     def _publish(self, ids: list[int]) -> None:

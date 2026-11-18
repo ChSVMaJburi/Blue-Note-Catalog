@@ -43,10 +43,10 @@ def parse_csv(content: bytes) -> tuple[list[tuple[int, CsvTrack]], list[RowError
                 RowError(
                     line=line,
                     code="invalid_csv",
-                    message="Malformed CSV record; parsing stopped here",
+                    message="Malformed CSV record",
                 )
             )
-            break
+            continue
         if len(row) != len(header):
             errors.append(RowError(line=line, code="column_count", message="Expected four fields"))
             continue

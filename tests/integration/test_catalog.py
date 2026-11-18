@@ -90,6 +90,9 @@ def test_parent_and_unique_constraints_map_to_http_errors(
     rejected = client.patch(url, json={"track_number": 1}, headers=admin_headers)
     assert rejected.status_code == 409
     assert rejected.json()["error"]["code"] == "track_number_conflict"
+    duplicate_track = client.post(f"{BASE}/tracks", json=track_data, headers=admin_headers)
+    assert duplicate_track.status_code == 409
+    assert duplicate_track.json() == rejected.json()
     assert client.get(url).json() == second
 
 
