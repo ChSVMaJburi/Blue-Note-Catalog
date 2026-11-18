@@ -19,6 +19,14 @@ jobs:
           docker compose -f compose.test.yaml run --rm --no-deps tests ruff format --check --no-cache .
       - name: Unit and PostgreSQL integration tests
         run: docker compose -f compose.test.yaml up --no-build --abort-on-container-exit --exit-code-from tests
+      - name: Boot the runtime stack and register over HTTP
+        env:
+          COMPOSE_PROJECT_NAME: catalog-ci-smoke
+        run: |
+          sh scripts/start.sh
+          python3 scripts/smoke.py
       - name: Clean up
         if: always()
-        run: docker compose -f compose.test.yaml down
+        run: |
+          docker compose -f compose.test.yaml down
+          if [ -f .env ]; then docker compose -p catalog-ci-smoke down --volumes; fi
