@@ -51,10 +51,41 @@ def test_import_access_and_file_errors(client, admin_headers, make_user):
     for name, content, code in [
         ("other.txt", HEADER, 422),
         ("empty.csv", b"", 422),
-        ("bad.csv", HEADER + b'1,First,1,30\n1,"incomplete', 422),
+        ("bad.csv", b'"malformed header', 422),
         ("oversize.csv", b"x" * (MAX_FILE_BYTES + 1), 413),
         ("larger.csv", b"x" * (MAX_FILE_BYTES * 2), 413),
     ]:
         response = client.post(PATH, headers=admin_headers, files={"file": (name, content)})
         assert response.status_code == code, response.text
     assert client.get("/api/v1/tracks").json()["items"] == []
+
+
+def test_unclosed_quote_preserves_complete_records(client, admin_headers, make_user, monkeypatch):
+    artist = client.post("/api/v1/artists", headers=admin_headers, json={"name": "Ella"}).json()
+    album = client.post(
+        "/api/v1/albums", headers=admin_headers, json={"title": "Blue", "artist_id": artist["id"]}
+    ).json()
+    assert (
+        client.put(f"/api/v1/me/subscriptions/{artist['id']}", headers=make_user()).status_code
+        == 204
+    )
+    sent = []
+    monkeypatch.setattr(notifications, "send_mock_email", sent.append)
+    data = HEADER + f'{album["id"]},"Two\nlines",1,30\n1,"unfinished\n1,Later,2,60'.encode()
+    result = client.post(PATH, headers=admin_headers, files={"file": ("tracks.csv", data)})
+    assert result.status_code == 200
+    assert result.json() == {
+        "imported": 1,
+        "rejected": 1,
+        "errors": [
+            {
+                "line": 4,
+                "code": "invalid_csv",
+                "message": "Malformed CSV record; parsing stopped here",
+            }
+        ],
+    }
+    assert [item["title"] for item in client.get("/api/v1/tracks").json()["items"]] == [
+        "Two\nlines"
+    ]
+    assert len(sent) == 1

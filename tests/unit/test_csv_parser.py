@@ -23,8 +23,9 @@ def test_csv_line_numbers_and_quoted_fields():
         (b"", "invalid_header"),
         (b"title,title,track_number,duration_seconds", "invalid_header"),
         (HEADER + b"\xff", "invalid_encoding"),
-        (HEADER + b'1,"unfinished', "invalid_csv"),
+        (b'"unfinished', "invalid_header"),
         (HEADER + b"1,T,1,60\n" * 1001, "too_many_rows"),
+        (HEADER + b"1,T,1,60\n" * 1000 + b'1,"unfinished', "too_many_rows"),
         (b"x" * (MAX_FILE_BYTES + 1), "file_too_large"),
     ],
 )

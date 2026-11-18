@@ -1,16 +1,15 @@
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, Depends, Request
 from starlette.datastructures import UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 
-from app.api.dependencies import require_admin
+from app.api.dependencies import Publisher, require_admin
 from app.db import DbSession
 from app.errors import AppError, error_docs
 from app.models import User
 from app.schemas.imports import ImportReport
-from app.services.imports import MAX_FILE_BYTES, import_tracks
-from app.services.notifications import notify_subscribers
+from app.services.imports import MAX_FILE_BYTES
 
 router = APIRouter(tags=["catalog"])
 MAX_ENVELOPE_BYTES = MAX_FILE_BYTES + 16 * 1024
@@ -72,15 +71,33 @@ async def csv_content(request: Request) -> bytes:
     "/tracks/import",
     dependencies=[Depends(authorize_upload)],
     openapi_extra=UPLOAD_BODY,
-    responses=error_docs(401, 403, 413, 415, 422),
+    responses={
+        **error_docs(401, 403, 413, 415, 422),
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "imported": 1,
+                        "rejected": 1,
+                        "errors": [
+                            {
+                                "line": 3,
+                                "code": "track_number_conflict",
+                                "message": "Track number already used on album",
+                            }
+                        ],
+                    }
+                }
+            }
+        },
+    },
 )
 def import_csv(
     content: Annotated[bytes, Depends(csv_content)],
-    session: DbSession,
-    background: BackgroundTasks,
-    request: Request,
+    publisher: Publisher,
 ) -> ImportReport:
-    report, created_ids = import_tracks(session, content)
-    if created_ids:
-        background.add_task(notify_subscribers, request.app.state.engine, created_ids)
-    return report
+    """Загрузите CSV от имени Admin. Отчёт содержит номер начала каждой отклонённой записи.
+
+    При ошибке кавычек сохраняется корректный префикс, разбор файла останавливается.
+    """
+    return publisher.import_csv(content)

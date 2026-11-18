@@ -1,8 +1,8 @@
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response
+from fastapi import APIRouter, Body, Depends, Query, Response
 
-from app.api.dependencies import ResourceId, require_admin
+from app.api.dependencies import Publisher, ResourceId, require_admin
 from app.db import DbSession
 from app.errors import error_docs
 from app.models import Album, Artist, Track
@@ -23,7 +23,6 @@ from app.schemas.catalog import (
 )
 from app.services import catalog
 from app.services.catalog import CatalogPage
-from app.services.notifications import notify_subscribers
 
 router = APIRouter(tags=["catalog"], responses=error_docs(422, 500))
 admin_only = [Depends(require_admin)]
@@ -132,11 +131,29 @@ def list_tracks(
     responses=error_docs(401, 403, 404, 409),
 )
 def create_track(
-    data: TrackCreate, session: DbSession, background: BackgroundTasks, request: Request
+    data: Annotated[
+        TrackCreate,
+        Body(
+            openapi_examples={
+                "jazz": {
+                    "summary": "Трек в альбоме 1",
+                    "value": {
+                        "album_id": 1,
+                        "title": "So What",
+                        "track_number": 1,
+                        "duration_seconds": 562,
+                    },
+                }
+            }
+        ),
+    ],
+    publisher: Publisher,
 ) -> Track:
-    track = catalog.tracks.create(session, data.model_dump())
-    background.add_task(notify_subscribers, request.app.state.engine, [track.id])
-    return track
+    """Администратор добавляет трек в существующий альбом.
+
+    После сохранения подписчикам отправляется фоновое уведомление.
+    """
+    return publisher.create(data)
 
 
 @router.get("/tracks/{track_id}", response_model=TrackRead, responses=error_docs(404))
